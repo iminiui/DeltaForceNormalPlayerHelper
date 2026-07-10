@@ -114,14 +114,14 @@ void transparentimage(IMAGE* dstimg, int x, int y, IMAGE* srcimg)
 }
 
 /**
- * @brief 将char*字符串转换为LPWSTR（宽字符字符串）
+ * @brief 将char*字符串转换为std::wstring（宽字符字符串）
  * 
- * 将ANSI编码的char*字符串转换为Unicode编码的LPWSTR字符串。
+ * 将ANSI编码的char*字符串转换为Unicode编码的std::wstring字符串。
  * 使用Windows API MultiByteToWideChar进行转换，支持中文等多字节字符。
+ * 使用std::wstring自动管理内存，无需调用者手动释放。
  * 
  * @param old 原始的ANSI字符串指针
- * @return LPWSTR 转换后的Unicode字符串指针
- * @warning 返回的指针使用new[]分配，调用者必须使用delete[]释放，否则会造成内存泄漏
+ * @return std::wstring 转换后的Unicode字符串
  * @note 转换时使用CP_ACP编码页（系统默认ANSI编码）
  */
 std::wstring pCharToLPWSTR(char* old)

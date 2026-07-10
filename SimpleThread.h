@@ -75,18 +75,7 @@ bool CloseMutex(HANDLE& hMutex) {
 	return false;
 }
 
-/**
- * @brief 弹出系统模态消息框
- * 
- * 显示一个系统模态消息框，确保用户必须处理后才能继续操作。
- * 常用于显示重要的错误信息或提示。
- * 
- * @param str 要显示的消息内容
- */
-void MBX(const char* str)
-{
-	MessageBoxA(NULL, str, "Notice", MB_OK | MB_SYSTEMMODAL);
-};
+
 
 /**
  * @brief 简单线程封装类

@@ -138,23 +138,38 @@ HWND g_hwnd = NULL;
 #pragma endregion
 
 // 函数声明
-void SaveConfig();                              // 保存配置
-void ReadConfig();                              // 读取配置
-bool IsPressed(int Key);                        // 检测按键是否按下
-bool IsPointInRect(POINT& pos, RECT& rec);      // 检测点是否在矩形区域内
-void ReDraw();                                  // 重绘UI界面
-void DrawSwitch(RECT& rec, IMAGE& img);         // 绘制开关控件
-void MainUIListen(void* args);                  // UI交互监听线程
-DWORD FindProcessId(const std::wstring& processName);  // 查找进程ID
-bool TerminateTargetProcess(DWORD processId);   // 终止指定进程
+/** @brief 保存用户配置到文件 */
+void SaveConfig();
+/** @brief 从文件读取用户配置 */
+void ReadConfig();
+/** @brief 检测指定按键是否按下 */
+bool IsPressed(int Key);
+/** @brief 检测点是否在矩形区域内 */
+bool IsPointInRect(POINT& pos, RECT& rec);
+/** @brief 重绘整个UI界面 */
+void ReDraw();
+/** @brief 绘制开关控件 */
+void DrawSwitch(RECT& rec, IMAGE& img);
+/** @brief UI交互监听线程函数 */
+void MainUIListen(void* args);
+/** @brief 根据进程名称查找进程ID */
+DWORD FindProcessId(const std::wstring& processName);
+/** @brief 终止指定进程 */
+bool TerminateTargetProcess(DWORD processId);
 
 // 功能线程函数声明
-unsigned int __stdcall MuteWindow(void* args);           // 切屏静音线程
-unsigned int __stdcall CloseAntiCheat(void* args);       // 关闭ACE线程
-unsigned int __stdcall AutoKnife(void* args);            // 取消刀法线程
-unsigned int __stdcall StopBreatheWhileFire(void* args); // 开火自动屏息线程
-unsigned int __stdcall Slide(void* args);               // 无声滑步线程
-unsigned int __stdcall UnlimitedFlash(void* args);       // 威慑性无限爆闪线程
+/** @brief 切屏静音功能线程：游戏窗口不在前台时自动静音 */
+unsigned int __stdcall MuteWindow(void* args);
+/** @brief 关闭ACE反作弊服务线程：停止ACE服务提升帧率 */
+unsigned int __stdcall CloseAntiCheat(void* args);
+/** @brief 取消刀法功能线程：快速近战切枪取消动画 */
+unsigned int __stdcall AutoKnife(void* args);
+/** @brief 开火自动屏息线程：开镜射击时自动屏息 */
+unsigned int __stdcall StopBreatheWhileFire(void* args);
+/** @brief 无声滑步线程：按住侧键快速点按W键实现滑步 */
+unsigned int __stdcall Slide(void* args);
+/** @brief 威慑性无限爆闪线程：按住中键快速开关手电 */
+unsigned int __stdcall UnlimitedFlash(void* args);
 
 /**
  * @brief 主程序入口函数
@@ -230,79 +245,91 @@ int main()
     // 步骤9：主循环（程序核心逻辑）
     while (1) {
         // 9.1 检测游戏状态变化
+        // 通过查找游戏窗口句柄判断游戏是否正在运行
         HWND new_hwnd = FindWindowA(WindowClass, WindowName);
         bool new_GameState = (new_hwnd != NULL);
         
-        // 如果游戏状态发生变化
+        // 如果游戏状态发生变化（启动或退出）
         if (new_GameState != GameState) {
-            GameState = new_GameState;
-            g_hwnd = new_hwnd;
-            ReDraw();  // 重新绘制界面（更新游戏状态显示）
-            GameState_last = GameState;
+            GameState = new_GameState;        // 更新游戏状态标志
+            g_hwnd = new_hwnd;                // 更新游戏窗口句柄
+            ReDraw();                         // 重新绘制界面（更新游戏状态显示）
+            GameState_last = GameState;       // 记录上一次状态用于比较
         }
 
-        // 9.2 更新功能开关UI显示（主页面）
+        // 9.2 更新功能开关UI显示（主页面，Page==0）
+        // 仅当功能开关状态变化且当前在主页面时，才重新绘制开关
         for (int i = 0; i < 6; i++) {
             if (FuncSw[i] != Drawed[i] && Page == 0) {
                 DrawSwitch(SwitchsPos[i], FuncSw[i] ? i_switch_on : i_switch_off);
-                Drawed[i] = FuncSw[i];
+                Drawed[i] = FuncSw[i];  // 更新绘制状态，避免重复绘制
             }
         }
 
-        // 9.3 更新取消刀武器模式开关显示（页面1）
+        // 9.3 更新取消刀武器模式开关显示（页面1，Page==1）
         if (b_MainWeapon != Drawed[6] && Page == 1) {
             DrawSwitch(SwitchsPos[6], b_MainWeapon ? i_switch_on : i_switch_off);
             Drawed[6] = b_MainWeapon;
         }
 
         // 9.4 检测页面切换
+        // 页面变化时需要重绘整个界面，因为不同页面布局完全不同
         if (Page != Page_last) {
             ReDraw();      // 重新绘制整个界面
             Page_last = Page;
         }
 
         // 9.5 管理功能线程生命周期（仅当游戏运行时）
+        // 游戏未运行时不创建功能线程，避免无效资源占用
         if (GameState) {
             for (int i = 0; i < 6; i++) {
-                DWORD exitCode = STILL_ACTIVE;
-                bool isThreadActive = false;
+                DWORD exitCode = STILL_ACTIVE;  // 线程退出码，初始化为"仍活动"
+                bool isThreadActive = false;    // 线程活动状态标志
 
                 // 检查线程是否活动
                 if (Threads[i] != NULL) {
                     if (GetExitCodeThread(Threads[i], &exitCode)) {
+                        // 退出码为STILL_ACTIVE表示线程仍在运行
                         isThreadActive = (exitCode == STILL_ACTIVE);
                     }
                     else {
-                        // 获取退出码失败，说明线程已结束，清理句柄
+                        // 获取退出码失败，说明线程句柄已失效，清理资源
                         CloseHandle(Threads[i]);
                         Threads[i] = NULL;
                     }
                 }
 
-                // 功能关闭时：等待线程结束并清理
+                // 功能关闭时：等待线程结束并清理资源
                 if (!FuncSw[i] && Threads[i] != NULL) {
                     if (isThreadActive) {
-                        // 等待线程结束（最多100ms）
+                        // 等待线程结束（最多100ms，避免阻塞主循环）
                         if (WaitForSingleObject(Threads[i], 100) == WAIT_OBJECT_0) {
                             CloseHandle(Threads[i]);
                             Threads[i] = NULL;
                         }
                     }
                     else {
-                        // 线程已结束，直接清理
+                        // 线程已结束，直接清理句柄
                         CloseHandle(Threads[i]);
                         Threads[i] = NULL;
                     }
-                    continue;
+                    continue;  // 跳过后续创建逻辑
                 }
 
                 // 功能开启时：创建新线程（如果线程不存在或已结束）
                 if (FuncSw[i] && (Threads[i] == NULL || !isThreadActive)) {
+                    // 清理旧的线程句柄（如果存在）
                     if (Threads[i] != NULL) {
                         CloseHandle(Threads[i]);
                         Threads[i] = NULL;
                     }
                     // 根据功能索引创建对应的线程
+                    // i=0: CloseAntiCheat 自动关闭ACE反作弊
+                    // i=1: MuteWindow    切屏静音
+                    // i=2: AutoKnife     取消刀法
+                    // i=3: StopBreatheWhileFire 开火自动屏息
+                    // i=4: Slide         无声滑步
+                    // i=5: UnlimitedFlash 威慑爆闪
                     switch (i) {
                     case 0: Threads[i] = ST.StartThreadEx(CloseAntiCheat, NULL); break;
                     case 1: Threads[i] = ST.StartThreadEx(MuteWindow, NULL); break;
@@ -315,7 +342,7 @@ int main()
             }
         }
 
-        // 降低CPU占用（每10ms轮询一次）
+        // 降低CPU占用（每10ms轮询一次，平衡响应速度和资源消耗）
         Sleep(10);
     }
 
@@ -605,102 +632,105 @@ void DrawSwitch(RECT& rec, IMAGE& img)
  */
 void MainUIListen(void* args)
 {
-    // 获取功能开关数组指针
+    // 获取功能开关数组指针（通过void*传递，需要强制类型转换）
     bool (*FuncUISw)[3] = (bool(*)[3])args;
     
-    POINT pos;              // 鼠标位置
-    bool last_clicked = false;  // 上一次点击状态
+    POINT pos;              // 鼠标位置（屏幕坐标转窗口坐标后）
+    bool last_clicked = false;  // 上一次点击状态，用于上升沿检测
 
-    // 无限循环监听
+    // 无限循环监听用户交互
     while (1)
     {
-        // 仅当辅助窗口为前台窗口时处理交互
+        // 仅当辅助窗口为前台窗口时处理交互（避免干扰其他窗口操作）
         if (GetForegroundWindow() == hwnd)
         {
-            // 获取鼠标位置并转换为窗口坐标
-            GetCursorPos(&pos);
-            ScreenToClient(hwnd, &pos);
+            // 获取鼠标位置并转换为窗口客户区坐标
+            GetCursorPos(&pos);           // 获取屏幕坐标
+            ScreenToClient(hwnd, &pos);   // 转换为窗口坐标
             
-            // 获取当前鼠标左键状态
+            // 获取当前鼠标左键状态（高16位为1表示按下）
             bool current_clicked = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 
-            // 上升沿检测：仅在点击状态从松开变为按下时触发
+            // 上升沿检测：仅在点击状态从松开变为按下时触发一次
+            // 避免按住鼠标时重复触发事件
             if (current_clicked && !last_clicked) {
-                // 处理页面切换
+                // 处理页面切换（点击左侧导航栏）
                 for (int i = 0; i < Page_count; i++)
                 {
                     if (IsPointInRect(pos, PagePos[i])) {
-                        Page = i;
+                        Page = i;  // 设置当前页面索引
                     }
                 }
 
-                // 处理保存和更多按钮
+                // 处理底部按钮（保存和更多）
                 for (int i = 0; i < 2; i++)
                 {
                     if (IsPointInRect(pos, ButtonPos[i])) {
                         switch (i)
                         {
                         case 0:
-                            SaveConfig();  // 保存配置
+                            SaveConfig();  // 保存当前配置到文件
                             break;
                         case 1:
-                            // 打开作者B站主页
+                            // 打开作者B站主页（外部链接）
                             ShellExecuteA(NULL, "open", "https://space.bilibili.com/9427514", 0, 0, 0);
                             break;
                         }
                     }
                 }
 
-                // 根据当前页面处理不同的交互
-                if (Page == 0)  // 页面0：功能开关切换
+                // 根据当前页面处理不同的交互逻辑
+                if (Page == 0)  // 页面0：功能总开关
                 {
+                    // 遍历6个功能开关，检测点击并切换状态
                     for (int i = 0; i < 6; i++)
                     {
                         if (IsPointInRect(pos, SwitchsPos[i])) {
-                            (*FuncUISw)[i] = !(*FuncUISw)[i];  // 切换开关状态
+                            (*FuncUISw)[i] = !(*FuncUISw)[i];  // 取反切换开关状态
                         }
                     }
                 }
                 else if (Page == 1)  // 页面1：取消刀法设置
                 {
-                    // 切换武器模式
+                    // 切换武器模式开关（主武器/手枪）
                     if (IsPointInRect(pos, SwitchsPos[6])) {
                         b_MainWeapon = !b_MainWeapon;
                     }
                     
-                    // 输入自定义时长
+                    // 点击输入框区域，弹出输入对话框
                     if (IsPointInRect(pos, InputPos[0])) {
-                        wchar_t num[10];
+                        wchar_t num[10];  // 输入缓冲区
+                        // 弹出输入框，提示建议范围
                         InputBox(num, 10, L"建议时长 150ms 到 190ms，电锯大约在 400ms", L"取消刀动画时长");
-                        int input = _wtoi(num);
+                        int input = _wtoi(num);  // 转换为整数
                         
-                        // 输入验证
+                        // 输入验证：确保数值有效且在合理范围内
                         if (input == 0)
                         {
-                            t_knife = 165;
+                            t_knife = 165;  // 无效输入，使用默认值
                             MessageBoxA(NULL, "输入中有无法解析的字符，当前数值重置为165ms", "警告", MB_OK | MB_ICONERROR | MB_DEFAULT_DESKTOP_ONLY);
                         }
                         else if (input > 1000 || input < 0)
                         {
-                            t_knife = 165;
+                            t_knife = 165;  // 超出范围，使用默认值
                             MessageBoxA(NULL, "输入数值超过阈值，当前数值重置为165ms", "警告", MB_OK | MB_ICONERROR | MB_DEFAULT_DESKTOP_ONLY);
                         }
                         else
                         {
-                            t_knife = input;
+                            t_knife = input;  // 有效输入，更新配置
                         }
-                        ReDraw();  // 更新显示
+                        ReDraw();  // 更新界面显示新的数值
                     }
                 }
                 else if (Page == 2)  // 页面2：威慑爆闪设置
                 {
-                    // 输入自定义时长
+                    // 点击输入框区域，弹出输入对话框
                     if (IsPointInRect(pos, InputPos[0])) {
                         wchar_t num[10];
                         InputBox(num, 10, L"建议时长 3s 到 5s，太长自己也受不了", L"爆闪手电时长");
                         int input = _wtoi(num);
                         
-                        // 输入验证
+                        // 输入验证：确保数值有效且在合理范围内（0-10秒）
                         if (input == 0)
                         {
                             t_flash = 5;
@@ -715,18 +745,18 @@ void MainUIListen(void* args)
                         {
                             t_flash = input;
                         }
-                        ReDraw();  // 更新显示
+                        ReDraw();  // 更新界面显示新的数值
                     }
                 }
             }
             
-            // 更新上一次点击状态
+            // 更新上一次点击状态，用于下一次上升沿检测
             last_clicked = current_clicked;
 
-            // 降低CPU占用
+            // 降低CPU占用（窗口在前台时10ms轮询一次）
             Sleep(10);
         }
-        // 窗口不在前台时降低轮询频率
+        // 窗口不在前台时降低轮询频率，减少资源消耗
         Sleep(10);
     }
 }
@@ -977,26 +1007,32 @@ unsigned int __stdcall CloseAntiCheat(void* args)
 unsigned int __stdcall AutoKnife(void* args)
 {
     // 主循环（功能开启且游戏运行时）
+    // FuncSw[2] 对应取消刀法功能开关，GameState 表示游戏是否运行
     while (FuncSw[2] && GameState) {
-        // 仅当游戏窗口为前台时处理
+        // 仅当游戏窗口为前台时处理（避免在其他窗口误触）
         if (GetForegroundWindow() == g_hwnd) {
-            // 检测鼠标侧键XButton1是否按下
+            // 检测鼠标侧键XButton1是否按下（功能激活键）
+            // 按住侧键期间持续执行取消刀操作
             while (GetAsyncKeyState(VK_XBUTTON1) & 0x8000) {
-                // 按下快速近战键（~键）
+                // 按下快速近战键（~键，游戏内绑定的快速近战）
                 PressKey(VK_OEM_3);
                 
                 // 等待出刀动画时长（+随机偏移±10ms，增加模拟真实性）
+                // t_knife 为用户自定义的动画时长，默认165ms
+                // 随机偏移使操作更自然，避免被检测为机械操作
                 Sleep(t_knife + (rand() % 21 - 10));
                 
-                // 根据武器模式切枪
+                // 根据武器模式切枪，取消后续动画
+                // b_MainWeapon=true: 切主武器（1键），适用于携带主武器时
+                // b_MainWeapon=false: 切手枪（4键），适用于只带手枪时（如G18夺舍）
                 if (b_MainWeapon)
                     PressKey('1');  // 切主武器
                 else
                     PressKey('4');  // 切手枪
             }
-            Sleep(100);
+            Sleep(100);  // 侧键释放后短暂等待，避免过于频繁检测
         }
-        Sleep(100);
+        Sleep(100);  // 游戏窗口不在前台时降低检测频率
     }
     return 0;
 }
@@ -1019,26 +1055,30 @@ unsigned int __stdcall AutoKnife(void* args)
  */
 unsigned int __stdcall StopBreatheWhileFire(void* args)
 {
-    bool bShiftPressed = false;  // 屏息键按下状态
+    bool bShiftPressed = false;  // 屏息键（;键，VK_OEM_1）按下状态标志
 
     // 主循环（功能开启且游戏运行时）
+    // FuncSw[3] 对应开火自动屏息功能开关
     while (FuncSw[3] && GameState)
     {
         if (GetForegroundWindow() == g_hwnd)
         {
-            // 检测右键是否按下（开镜）
+            // 检测右键是否按下（开镜动作）
+            // 只有开镜时才启用自动屏息
             if (GetAsyncKeyState(VK_RBUTTON) & 0x8000)
             {
-                // 检测左键是否按下（射击）
+                // 检测左键是否按下（射击动作）
                 bool bLeftDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 
-                // 左键按下且屏息键未按下：按下屏息键
+                // 左键按下且屏息键未按下：自动按下屏息键
+                // 实现"开镜+射击=自动屏息"的逻辑
                 if (bLeftDown && !bShiftPressed)
                 {
-                    keybd_event(VK_OEM_1, 0, 0, 0);
+                    keybd_event(VK_OEM_1, 0, 0, 0);  // 按下;键（游戏内绑定的屏息）
                     bShiftPressed = true;
                 }
                 // 左键释放且屏息键已按下：释放屏息键
+                // 射击结束后自动取消屏息
                 else if (!bLeftDown && bShiftPressed)
                 {
                     keybd_event(VK_OEM_1, 0, KEYEVENTF_KEYUP, 0);
@@ -1046,6 +1086,7 @@ unsigned int __stdcall StopBreatheWhileFire(void* args)
                 }
             }
             // 右键释放且屏息键已按下：释放屏息键
+            // 开镜结束后确保取消屏息
             else if (bShiftPressed)
             {
                 keybd_event(VK_OEM_1, 0, KEYEVENTF_KEYUP, 0);
@@ -1053,12 +1094,13 @@ unsigned int __stdcall StopBreatheWhileFire(void* args)
             }
         }
         // 窗口切换且屏息键已按下：释放屏息键（防止卡在按下状态）
+        // 切换窗口时必须释放所有模拟按键，避免影响其他程序
         else if (bShiftPressed)
         {
             keybd_event(VK_OEM_1, 0, KEYEVENTF_KEYUP, 0);
             bShiftPressed = false;
         }
-        Sleep(100);
+        Sleep(100);  // 100ms检测一次，平衡响应速度和资源消耗
     }
     return 0;
 }
@@ -1079,47 +1121,56 @@ unsigned int __stdcall StopBreatheWhileFire(void* args)
  * @return unsigned int 线程退出码
  */
 unsigned int __stdcall Slide(void* args) {
-    bool bNumPad0Pressed = false;  // 奔跑键按下状态
+    bool bNumPad0Pressed = false;  // 奔跑键（小键盘0）按下状态标志
 
-    // 初始化按键输入结构
+    // 初始化按键输入结构（使用SendInput模拟按键，比keybd_event更精确）
+    // W键按下事件
     INPUT keyDown = { 0 };
     keyDown.type = INPUT_KEYBOARD;
     keyDown.ki.wVk = 'W';
 
+    // W键释放事件
     INPUT keyUp = { 0 };
     keyUp.type = INPUT_KEYBOARD;
     keyUp.ki.wVk = 'W';
     keyUp.ki.dwFlags = KEYEVENTF_KEYUP;
 
+    // 小键盘0键（奔跑键）按下事件
     INPUT numDown = { 0 };
     numDown.type = INPUT_KEYBOARD;
     numDown.ki.wVk = VK_NUMPAD0;
 
+    // 小键盘0键释放事件
     INPUT numUp = { 0 };
     numUp.type = INPUT_KEYBOARD;
     numUp.ki.wVk = VK_NUMPAD0;
     numUp.ki.dwFlags = KEYEVENTF_KEYUP;
 
     // 主循环（功能开启且游戏运行时）
+    // FuncSw[4] 对应无声滑步功能开关
     while (FuncSw[4] && GameState)
     {
+        // 仅当游戏窗口为前台时处理
         if (GetForegroundWindow() == g_hwnd)
         {
-            // 检测鼠标侧键XButton2是否按下
+            // 检测鼠标侧键XButton2是否按下（功能激活键）
             if (GetAsyncKeyState(VK_XBUTTON2) & 0x8000) {
-                // 首次按下时按下奔跑键
+                // 首次按下时按下奔跑键（小键盘0）
+                // 保持奔跑状态，但通过快速点按W键打断跑步动画
                 if (!bNumPad0Pressed) {
                     SendInput(1, &numDown, sizeof(INPUT));
                     bNumPad0Pressed = true;
                 }
 
-                // 快速点按W键（模拟滑步）
+                // 快速点按W键（50ms按下，30ms释放）
+                // 这种快速点击可以打断跑步动画，但保持移动速度
+                // 达到"无声滑步"的效果（降低脚步声但不降低移动速度）
                 SendInput(1, &keyDown, sizeof(INPUT));
                 Sleep(50);
                 SendInput(1, &keyUp, sizeof(INPUT));
                 Sleep(30);
             }
-            // 侧键释放时释放奔跑键
+            // 侧键释放时释放奔跑键，恢复正常状态
             else {
                 if (bNumPad0Pressed) {
                     SendInput(1, &numUp, sizeof(INPUT));
@@ -1127,7 +1178,7 @@ unsigned int __stdcall Slide(void* args) {
                 }
             }
         }
-        Sleep(10);
+        Sleep(10);  // 高频检测，确保响应及时
     }
     return 0;
 }

@@ -66,35 +66,49 @@ private:
 public:
 
     /**
-     * @brief 初始化COM环境和资源
+     * @brief 初始化资源
+     * 
+     * 初始化设备名称缓冲区和PROPVARIANT结构体，为音频会话管理做准备。
      * 
      * @return bool 初始化成功返回true，失败返回false
+     * @note 该方法由构造函数自动调用，无需手动调用
      */
     bool Init();
 
     /**
      * @brief 构造函数
      * 
-     * 自动调用Init()初始化COM环境和资源
+     * 自动调用Init()方法初始化资源，创建SingleVolume实例。
      */
     SingleVolume();
 
     /**
      * @brief 析构函数
      * 
-     * 释放所有已分配的COM接口和内存资源
+     * 释放所有已分配的资源：设备名称缓冲区、COM接口、PROPVARIANT结构体。
      */
     ~SingleVolume();
 
     /**
      * @brief 获取指定进程的音频会话控制接口
      * 
-     * 通过枚举系统中所有音频会话，找到与指定进程ID匹配的会话，
-     * 并返回其ISimpleAudioVolume接口指针，用于后续的音量控制操作。
+     * 通过Windows Core Audio API枚举系统中所有音频会话，
+     * 找到与指定进程ID匹配的会话，并返回其ISimpleAudioVolume接口指针。
+     * 
+     * 内部实现流程：
+     * 1. 初始化COM库（STA模式）
+     * 2. 创建音频设备枚举器
+     * 3. 获取默认音频输出设备
+     * 4. 激活音频会话管理器接口
+     * 5. 获取音频会话枚举器
+     * 6. 遍历所有音频会话，匹配目标进程ID
+     * 7. 查询并返回ISimpleAudioVolume接口
+     * 8. 释放所有中间COM接口并反初始化COM库
      * 
      * @param PID 目标进程的进程ID
      * @return ISimpleAudioVolume* 音频会话的音量控制接口指针，失败返回nullptr
      * @note 返回的接口需要调用者在使用完毕后手动Release()
+     * @warning 该函数内部会调用CoInitialize/CoUninitialize，应在独立线程中调用
      */
     ISimpleAudioVolume* GetControl(ULONG PID);
 
@@ -103,6 +117,7 @@ public:
      * 
      * @param ISAV 音频会话的ISimpleAudioVolume接口指针
      * @return bool 静音状态返回true，非静音返回false
+     * @note 如果ISAV为nullptr，默认返回false
      */
     bool IsMuted(ISimpleAudioVolume* ISAV);
 
@@ -111,6 +126,7 @@ public:
      * 
      * @param ISAV 音频会话的ISimpleAudioVolume接口指针
      * @return bool 操作成功返回true，失败返回false
+     * @note 如果KeepOriginVolume成员为false，会将音量设置为0而非使用静音标志
      */
     bool SetMute(ISimpleAudioVolume* ISAV);
 
@@ -119,6 +135,7 @@ public:
      * 
      * @param ISAV 音频会话的ISimpleAudioVolume接口指针
      * @return bool 操作成功返回true，失败返回false
+     * @note 如果KeepOriginVolume成员为false，会将音量恢复为1.0（最大音量）
      */
     bool UnMute(ISimpleAudioVolume* ISAV);
 };
